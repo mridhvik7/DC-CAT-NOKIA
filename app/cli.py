@@ -1,13 +1,15 @@
 """DC CAT command-line entry point.
 
 Usage:
-    python -m app.cli <file|folder> [--features NAMES] [--query TEXT] [--excel PATH]
+    python -m app.cli <file|folder> [--features NAMES | --ask "..."]
+                      [--query TEXT] [--excel PATH]
 
 Examples:
     python -m app.cli fixtures/sample.pdf --excel report.xlsx
     python -m app.cli fixtures/sample.pdf --features broken_links --excel bl.xlsx
     python -m app.cli docs/ --features keyword_search --query authentication
     python -m app.cli docs/ --features multi_doc_keyword_search --query authentication
+    python -m app.cli manual.pdf --ask "are any cross-references broken?"
 
 Two kinds of feature, orchestrated by two LangGraph graphs:
 
@@ -18,6 +20,9 @@ Two kinds of feature, orchestrated by two LangGraph graphs:
 
 "all" runs both kinds. A corpus feature with no --query to work with is
 reported as skipped.
+
+--ask replaces --features with a plain-English request: app/agent/router.py
+decides which features it means. --features keeps working exactly as before.
 """
 from __future__ import annotations
 
@@ -30,6 +35,8 @@ from typing import Optional
 from common import excel
 from common.contracts import Document, FeatureModule, FeatureResult
 from common.parser import parse
+
+from app.agent.router import route as route_request
 
 # The LangGraph agent orchestrates the feature services. It is optional: if
 # langgraph is not installed the CLI falls back to calling the services
@@ -334,6 +341,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Comma-separated features to run: " + ", ".join(ALL_FEATURE_NAMES)
         + " (default: all)",
     )
+    arg_parser.add_argument(
+        "--ask",
+        default=None,
+        help="Plain-English request; picks the features for you "
+             '(e.g. --ask "are any cross-references broken?")',
+    )
     arg_parser.add_argument("--query", default=None, help="Keyword to search for")
     arg_parser.add_argument("--excel", default=None, help="Path to write an Excel report to")
     args = arg_parser.parse_args(argv)
@@ -343,13 +356,27 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"No supported documents found at: {args.target}", file=sys.stderr)
         return 1
 
-    selected = _select_features(args.features, arg_parser)
-    corpus_selected = _select_corpus_features(args.features)
+    if args.ask:
+        decision = route_request(args.ask)
+        print(
+            f"(routing via {decision.method}: "
+            f"{', '.join(decision.features)} — {decision.reason})",
+            file=sys.stderr,
+        )
+        selected = [f for f in FEATURE_MODULES if f.name in decision.features]
+        corpus_selected = [f for f in CORPUS_MODULES if f.name in decision.features]
+        # An explicit --query still wins: the user was more specific than we were.
+        options = dict(decision.options)
+        if args.query:
+            options["query"] = args.query
+    else:
+        selected = _select_features(args.features, arg_parser)
+        corpus_selected = _select_corpus_features(args.features)
+        options = {"query": args.query}
+
     if not selected and not corpus_selected:
         print("None of the requested features are implemented yet.", file=sys.stderr)
         return 1
-
-    options = {"query": args.query}
     columns_by_feature = {feature.name: feature.report_columns() for feature in selected}
     columns_by_feature.update(
         {feature.name: feature.report_columns() for feature in corpus_selected}
