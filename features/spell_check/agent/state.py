@@ -11,3 +11,6 @@ class SpellCheckState(TypedDict, total=False):
     is_protected: bool
     is_valid_correction: bool
     decision: str
+
+
+    
