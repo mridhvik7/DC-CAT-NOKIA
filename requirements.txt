@@ -17,4 +17,6 @@ langgraph
 # that pulls ~2.5 GB of CUDA wheels; install CPU-only torch first to
 # avoid it:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
