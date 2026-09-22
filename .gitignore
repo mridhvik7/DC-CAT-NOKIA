@@ -13,3 +13,4 @@ fixtures/sample.pdf
 models/
 
 .DS_Store
+.env.local
