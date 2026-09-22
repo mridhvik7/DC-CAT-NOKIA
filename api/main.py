@@ -6,7 +6,6 @@ import tempfile
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agent.graph import agent_graph
 from common.parser import parse
 
 app = FastAPI(title="DC-CAT-NOKIA API")
@@ -58,7 +57,7 @@ async def analyze(
 
     try:
         document = parse(temp_path)
-
+        from app.agent.graph import agent_graph
         result = agent_graph.invoke(
             {
                 "document": document,
