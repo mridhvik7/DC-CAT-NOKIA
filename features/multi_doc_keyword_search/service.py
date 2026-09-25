@@ -350,7 +350,7 @@ def _finding(
         feature=FEATURE_NAME,
         severity="info",
         page=unit.page,
-        message=f"{keyword!r} found on {where} of {document.path}",
+        message=f"{keyword!r} found on {where}",
         confidence=None,  # an exact match needs no similarity caveat
         details={
             "keyword": keyword,
