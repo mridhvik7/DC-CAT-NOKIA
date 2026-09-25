@@ -55,7 +55,10 @@ async def analyze(
 
     suffix = os.path.splitext(file.filename or "")[1].lower()
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix,
+    ) as temp_file:
         temp_file.write(await file.read())
         temp_path = temp_file.name
 
@@ -161,41 +164,42 @@ async def analyze_multiple(
             if feature != "multi_doc_keyword_search"
         ]
 
-        for item in documents:
-            result = agent_graph.invoke(
-                {
-                    "document": item["document"],
-                    "options": {"query": query},
-                    "selected_features": per_document_features,
-                }
-            )
+        if per_document_features:
+            for item in documents:
+                result = agent_graph.invoke(
+                    {
+                        "document": item["document"],
+                        "options": {"query": query},
+                        "selected_features": per_document_features,
+                    }
+                )
 
-            all_results.append(
-                {
-                    "filename": item["filename"],
-                    "page_count": item["document"].page_count,
-                    "results": [
-                        {
-                            "feature": feature_result.feature,
-                            "status": feature_result.status,
-                            "error": feature_result.error,
-                            "meta": feature_result.meta,
-                            "findings": [
-                                {
-                                    "feature": finding.feature,
-                                    "severity": finding.severity,
-                                    "page": finding.page,
-                                    "message": finding.message,
-                                    "confidence": finding.confidence,
-                                    "details": finding.details,
-                                }
-                                for finding in feature_result.findings
-                            ],
-                        }
-                        for feature_result in result["results"]
-                    ],
-                }
-            )
+                all_results.append(
+                    {
+                        "filename": item["filename"],
+                        "page_count": item["document"].page_count,
+                        "results": [
+                            {
+                                "feature": feature_result.feature,
+                                "status": feature_result.status,
+                                "error": feature_result.error,
+                                "meta": feature_result.meta,
+                                "findings": [
+                                    {
+                                        "feature": finding.feature,
+                                        "severity": finding.severity,
+                                        "page": finding.page,
+                                        "message": finding.message,
+                                        "confidence": finding.confidence,
+                                        "details": finding.details,
+                                    }
+                                    for finding in feature_result.findings
+                                ],
+                            }
+                            for feature_result in result["results"]
+                        ],
+                    }
+                )
 
         if "multi_doc_keyword_search" in selected_features:
             corpus_result = corpus_graph.invoke(
@@ -205,14 +209,15 @@ async def analyze_multiple(
                     "selected_features": ["multi_doc_keyword_search"],
                 }
             )
-        for result in corpus_result.get("results", []):
-            for finding in result.findings:
-                temp_path = finding.details.get("document")
 
-                for item in documents:
-                    if item["path"] == temp_path:
-                        finding.details["document_name"] = item["filename"]
-                        break
+            for result in corpus_result.get("results", []):
+                for finding in result.findings:
+                    temp_path = finding.details.get("document")
+
+                    for item in documents:
+                        if item["path"] == temp_path:
+                            finding.details["document_name"] = item["filename"]
+                            break
 
             all_results.append(
                 {
