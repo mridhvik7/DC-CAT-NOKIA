@@ -90,3 +90,75 @@
   align-self: flex-start;
   margin-top: 4px;
 }
+.history-page {
+  max-width: 1040px;
+  margin: 62px auto 0;
+}
+
+.history-page h1 {
+  margin: 0;
+  color: #172435;
+  font-size: clamp(31px, 3.8vw, 42px);
+  font-weight: 690;
+  letter-spacing: -0.05em;
+}
+
+.history-list {
+  margin-top: 30px;
+  display: grid;
+  gap: 12px;
+}
+
+.history-card {
+  padding: 20px 22px;
+  border: 1px solid #e4e8ec;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.history-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.history-card h2 {
+  margin: 0;
+  color: #2a394b;
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.history-meta {
+  margin: 7px 0 0;
+  color: #7a8794;
+  font-size: 12px;
+}
+
+.history-documents {
+  margin: 12px 0 0;
+  color: #4f6072;
+  font-size: 12px;
+}
+
+.history-feature-counts {
+  margin: 8px 0 0;
+  color: #7a8794;
+  font-size: 11px;
+}
+
+.history-card .text-button {
+  flex-shrink: 0;
+}
+
+.history-empty {
+  margin-top: 30px;
+  padding: 32px;
+  border: 1px dashed #d6dde4;
+  border-radius: 10px;
+  color: #7b8895;
+  background: #fafbfd;
+  text-align: center;
+  font-size: 13px;
+}

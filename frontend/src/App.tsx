@@ -9,7 +9,13 @@ import {
 import { getDocument, GlobalWorkerOptions, Util } from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-type Screen = 'home' | 'progress' | 'results' | 'viewer' | 'placeholder'
+type Screen =
+  | 'home'
+  | 'progress'
+  | 'results'
+  | 'viewer'
+  | 'history'
+  | 'placeholder'
 
 type IconName =
   | 'home'
@@ -77,6 +83,18 @@ type AnalysisResult = {
   document: DocumentRecord
   findings: Finding[]
   completedAt: string
+}
+type HistoryEntry = {
+  id: string
+  completedAt: string
+  documents: string[]
+  documentCount: number
+  pageCount: number
+  totalFindings: number
+  spellCheckFindings: number
+  brokenLinksFindings: number
+  keywordSearchFindings: number
+  result: AnalysisResult
 }
 
 const navigation: NavigationItem[] = [
@@ -261,6 +279,16 @@ function App() {
   const [selectedFeatureIds, setSelectedFeatureIds] = useState<string[]>([])
   const [analysisResult, setAnalysisResult] =
     useState<AnalysisResult | null>(null)
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [viewedHistoryEntry, setViewedHistoryEntry] =
+  useState<HistoryEntry | null>(null)
+  useEffect(() => {
+  const savedHistory = localStorage.getItem('dc-cat-history')
+
+  if (savedHistory) {
+    setHistory(JSON.parse(savedHistory))
+  }
+}, [])
   const [activeFinding, setActiveFinding] = useState<Finding | null>(null)
   const [progress, setProgress] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -354,12 +382,15 @@ function App() {
 
             const characterWidth = itemWidth / textItem.str.length
 
-            setHighlightBox({
-              x: transform[4] + startIndex * characterWidth,
-              y: transform[5] - fontHeight,
-              width: targetText.length * characterWidth,
-              height: fontHeight,
-            })
+            const paddingX = 3
+const paddingY = 2
+
+setHighlightBox({
+  x: transform[4] + startIndex * characterWidth - paddingX,
+  y: transform[5] - fontHeight - paddingY,
+  width: targetText.length * characterWidth + paddingX * 2,
+  height: fontHeight + paddingY * 2,
+})
           } else {
             setHighlightBox(null)
           }
@@ -624,17 +655,42 @@ documentName:
           ),
       )
 
-      setAnalysisResult({
-        document: {
-          ...document,
-          pageCount: data.page_count ?? document.pageCount,
-          pageCountSource: data.page_count
-            ? 'backend'
-            : document.pageCountSource,
-        },
-        findings: realFindings,
-        completedAt: 'Backend connected',
-      })
+      const newResult: AnalysisResult = {
+  document: {
+    ...document,
+    pageCount: data.page_count ?? document.pageCount,
+    pageCountSource: data.page_count
+      ? 'backend'
+      : document.pageCountSource,
+  },
+  findings: realFindings,
+  completedAt: 'Backend connected',
+}
+
+setAnalysisResult(newResult)
+const historyEntry: HistoryEntry = {
+  id: Date.now().toString(),
+  completedAt: new Date().toISOString(),
+  documents: selectedFiles.map((file) => file.name),
+  documentCount: selectedFiles.length,
+  pageCount: newResult.document.pageCount ?? 0,
+totalFindings: newResult.findings.length,
+spellCheckFindings: newResult.findings.filter(
+  (finding) => finding.featureId === 'spell-check',
+).length,
+brokenLinksFindings: newResult.findings.filter(
+  (finding) => finding.featureId === 'broken-links',
+).length,
+keywordSearchFindings: newResult.findings.filter(
+  (finding) => finding.featureId === 'keyword-search',
+).length,
+result: newResult,
+}
+
+const updatedHistory = [historyEntry, ...history]
+
+setHistory(updatedHistory)
+localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
 
       setProgress(100)
       setScreen('results')
@@ -652,6 +708,7 @@ documentName:
   setDocument(null)
   setAnalysisResult(null)
   setActiveFinding(null)
+  setViewedHistoryEntry(null)
   setProgress(0)
   setFileError('')
   setSearch('')
@@ -669,15 +726,16 @@ documentName:
 }
     const navigate = (label: string) => {
       
-    setActivePage(label)
     setScreen(
-      label === 'Home'
-        ? 'home'
-        : label === 'Reports' && analysisResult
-          ? 'results'
-          : 'placeholder',
-    )
-  }
+  label === 'Home'
+    ? 'home'
+    : label === 'History'
+      ? 'history'
+      : label === 'Reports' && analysisResult
+        ? 'results'
+        : 'placeholder',
+)
+    }
 
   const openFinding = (finding: Finding) => {
     const matchingFile = selectedFiles[Number(finding.documentId)]
@@ -1225,14 +1283,21 @@ documentName:
           <h1>Analysis Results</h1>
 
           <p className="results-document">
-            {selectedFiles.length} documents <span>·</span>{' '}
-            {selectedFilePageCounts.reduce<number>(
-              (total, pageCount) =>
-                total + (pageCount ?? 0),
-              0
-            )}{' '}
-            pages total
-          </p>
+  {viewedHistoryEntry
+    ? `${viewedHistoryEntry.documentCount} document${
+        viewedHistoryEntry.documentCount !== 1 ? 's' : ''
+      }`
+    : `${selectedFiles.length} document${
+        selectedFiles.length !== 1 ? 's' : ''
+      }`}{' '}
+  <span>·</span>{' '}
+  {viewedHistoryEntry
+    ? `${viewedHistoryEntry.pageCount} pages total`
+    : `${selectedFilePageCounts.reduce<number>(
+        (total, pageCount) => total + (pageCount ?? 0),
+        0,
+      )} pages total`}
+</p>
         </div>
 
         <div className="results-actions">
@@ -1599,9 +1664,7 @@ documentName:
                         top: highlightBox.y,
                         width: highlightBox.width,
                         height: highlightBox.height,
-                        border: '2px solid #d93025',
-                        backgroundColor:
-                          'rgba(217, 48, 37, 0.16)',
+                        backgroundColor: 'rgba(217, 48, 37, 0.18)',
                         pointerEvents: 'none',
                         boxSizing: 'border-box',
                       }}
@@ -1624,18 +1687,69 @@ documentName:
       </p>
     </section>
   )
+  const historyView = (
+  <section className="history-page">
+    <h1>History</h1>
+
+    {history.length === 0 ? (
+      <p className="history-empty">No analysis history yet.</p>
+    ) : (
+      <div className="history-list">
+        {history.map((entry) => (
+          <article className="history-card" key={entry.id}>
+            <div className="history-card-header">
+              <div>
+                <h2>
+                  {new Date(entry.completedAt).toLocaleString()}
+                </h2>
+
+                <p className="history-meta">
+                  {entry.documentCount} document
+                  {entry.documentCount !== 1 ? 's' : ''} ·{' '}
+                  {entry.pageCount} pages · {entry.totalFindings} findings
+                </p>
+              </div>
+
+              <button
+                className="text-button"
+                onClick={() => {
+                  setViewedHistoryEntry(entry)
+                  setAnalysisResult(entry.result)
+                  setScreen('results')
+                }}
+              >
+                View Results <Icon name="arrow" />
+              </button>
+            </div>
+
+            <p className="history-documents">
+              {entry.documents.join(', ')}
+            </p>
+
+            <p className="history-feature-counts">
+              Spell Check: {entry.spellCheckFindings} · Broken Links:{' '}
+              {entry.brokenLinksFindings} · Keyword Search:{' '}
+              {entry.keywordSearchFindings}
+            </p>
+          </article>
+        ))}
+      </div>
+    )}
+  </section>
+)
 
   const content =
-    screen === 'home'
-      ? home
-      : screen === 'progress'
-        ? progressView
-        : screen === 'results'
-          ? results
-          : screen === 'viewer'
-            ? viewer
-            : placeholder
-
+  screen === 'home'
+    ? home
+    : screen === 'progress'
+      ? progressView
+      : screen === 'results'
+        ? results
+        : screen === 'viewer'
+          ? viewer
+          : screen === 'history'
+  ? historyView
+  : placeholder
   return (
     <div className="app-shell">
       <aside
@@ -1679,6 +1793,6 @@ documentName:
       </main>
     </div>
   )
-}
+    }
 
 export default App
