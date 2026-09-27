@@ -17,6 +17,10 @@ Deliberate faults planted in the document (keep this list in sync):
         No section 9 exists at all; no suggestion is expected.
     p2  One TOC entry links to a real page and must NOT be flagged.
 
+  PLAIN-TEXT REFERENCES (no hyperlink, so the link check cannot see them)
+    "listed in Table 2"  -> Table 2 is captioned, so this resolves.
+    "See Table 7"        -> no Table 7 caption exists; must be reported.
+
   SPELL CHECK
     "the parameter was retrieved form the OSS database"   form -> from
     "ensure that the license file is their before you begin"  their -> there
@@ -101,6 +105,7 @@ SECTIONS: list[tuple[str | None, str, list[str]]] = [
         "across volumes is not supported and will fail validation at startup.",
     ]),
     ("3.2", "Software Prerequisites", [
+        "Table 2: Supported operating system baselines",
         "The supported operating system baselines are listed in Table 2. Applying "
         "vendor security patches is supported and expected; upgrading the kernel "
         "major version is not.",
@@ -137,6 +142,11 @@ SECTIONS: list[tuple[str | None, str, list[str]]] = [
     ("5", "Operations", [
         "Routine operation is largely unattended. The tasks described in this "
         "section are the ones that require an operator decision.",
+    ]),
+    ("5.0", "Alarm Reference", [
+        "Table 4: Alarm severity by class",
+        "Severity is derived from the alarm class. See Table 7 for the retired "
+        "severity mapping, which is no longer part of this release.",
     ]),
     ("5.1", "Monitoring and Alarms", [
         "Alarms are raised against the element that reported the underlying "
