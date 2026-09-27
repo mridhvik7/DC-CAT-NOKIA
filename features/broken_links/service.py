@@ -42,6 +42,37 @@ _CAPTION_RE = re.compile(
 
 _CAPTIONED_TYPES = frozenset({"Figure", "Table"})
 
+# --- Nokia-style cross-references -------------------------------------------
+#
+# Nokia documentation does not write "see Section 3.2". It links the section
+# TITLE: "See Modifying XYZ parameters to find information on...". When such a
+# reference breaks, the title disappears and leaves a gap in the sentence:
+#
+#     working : "See Modifying XYZ parameters to find information on..."
+#     broken  : "See  to find information on..."
+#     broken  : "For more information, see  in XYZ RNC Network."
+#
+# So the signal is a reference cue with nothing after it. Detected from the
+# text, independently of link annotations, because a removed cross-reference
+# usually takes its annotation with it.
+#
+# "see/refer to" is listed first so that "See/Refer to XYZ technical support
+# note." — a reference to another document, not a cross-reference — consumes
+# the "to" and is left alone. Nokia asked for those to be ignored.
+_REFERENCE_CUE_RE = re.compile(
+    r"\b(?P<cue>see\s*/\s*refer(?:s|red)?\s+to|see\s+also|refer(?:s|red)?\s+to"
+    r"|see|described\s+in|shown\s+in|depicted\s+in)(?P<gap>[ \t]*)",
+    re.IGNORECASE,
+)
+
+# A cross-reference title never begins with one of these. If one follows the
+# cue directly, whatever sat between them has been removed.
+_FUNCTION_WORDS = frozenset({
+    "to", "in", "for", "on", "at", "of", "and", "or", "as", "from",
+})
+
+_NEXT_TOKEN_RE = re.compile(r"([A-Za-z0-9:/'\"\-]+)")
+
 # Reference types that name a heading in the document outline. Figure and
 # Table references point at captions, which are not headings, so matching
 # their number against heading numbers would be wrong: "Figure 3" is not
@@ -131,6 +162,7 @@ class BrokenLinksService:
                 )
 
             findings.extend(_prose_findings(document, captions, reported))
+            findings.extend(_missing_reference_findings(document))
 
             return FeatureResult(feature=self.name, status="ok", findings=findings)
         except Exception as exc:  # process() must never raise
@@ -285,6 +317,77 @@ def _prose_findings(
                 )
             )
     return findings
+
+
+def _missing_reference_findings(document: Document) -> list[Finding]:
+    """Cross-references whose text has gone, leaving a gap in the sentence.
+
+    This is the failure mode Nokia described: their cross-references carry the
+    destination title as the link text, so a broken one reads "See  to find
+    information on..." with nothing where the title was. Link-annotation
+    checking cannot see these — the annotation is removed along with the text.
+    """
+    findings: list[Finding] = []
+    seen: set[tuple[int, int]] = set()
+
+    for paragraph in document.paragraphs:
+        text = " ".join(paragraph.text.split("\n"))
+        for match in _REFERENCE_CUE_RE.finditer(text):
+            tail = text[match.end():]
+            token = _NEXT_TOKEN_RE.match(tail)
+            following = token.group(1) if token else ""
+
+            if match.group("gap").count(" ") >= 2:
+                reason = "gap where the reference text should be"
+            elif not following or following[0] in ".,;:)":
+                reason = "sentence ends immediately after the reference cue"
+            elif following.lower() in _FUNCTION_WORDS:
+                reason = (
+                    f"cue followed by {following!r}, with no reference "
+                    f"text between them"
+                )
+            else:
+                continue
+
+            key = (paragraph.page, match.start())
+            if key in seen:
+                continue
+            seen.add(key)
+
+            cue = " ".join(match.group("cue").split())
+            context = _display(_context(text, match.start()))
+            findings.append(
+                Finding(
+                    feature="broken_links",
+                    severity="warning",
+                    page=paragraph.page,
+                    # The sentence is the finding: a reviewer needs to see the
+                    # gap to judge it, and there is no number to quote.
+                    message=(
+                        f"Cross-reference after {cue!r} is missing its text: "
+                        f"{context!r}"
+                    ),
+                    confidence=None,
+                    details={
+                        "reference_type": "Cross-reference",
+                        "reference_text": context,
+                        "evidence_source": "prose",
+                        "link_text": None,
+                        "reason": reason,
+                        "suggested_heading": None,
+                        "suggested_heading_number": None,
+                        "suggested_page": None,
+                        "suggestion_confidence": None,
+                    },
+                )
+            )
+    return findings
+
+
+def _context(text: str, position: int, width: int = 70) -> str:
+    """The sentence fragment around a finding, so the report shows the gap."""
+    start = max(0, position - 10)
+    return text[start:position + width].strip()
 
 
 def _suggest_caption(
