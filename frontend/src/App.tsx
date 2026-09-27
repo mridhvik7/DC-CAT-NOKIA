@@ -724,6 +724,12 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
     fileInputRef.current.value = ''
   }
 }
+  const deleteHistoryEntry = (id: string) => {
+    const updatedHistory = history.filter((entry) => entry.id !== id)
+
+    setHistory(updatedHistory)
+    localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
+  }
     const navigate = (label: string) => {
       
     setScreen(
@@ -1689,7 +1695,21 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
   )
   const historyView = (
   <section className="history-page">
-    <h1>History</h1>
+    <div className="history-page-header">
+      <h1>History</h1>
+
+      {history.length > 0 && (
+        <button
+          className="history-clear-button"
+          onClick={() => {
+            setHistory([])
+            localStorage.removeItem('dc-cat-history')
+          }}
+        >
+          Erase All History
+        </button>
+      )}
+    </div>
 
     {history.length === 0 ? (
       <p className="history-empty">No analysis history yet.</p>
@@ -1698,29 +1718,40 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
         {history.map((entry) => (
           <article className="history-card" key={entry.id}>
             <div className="history-card-header">
-              <div>
-                <h2>
-                  {new Date(entry.completedAt).toLocaleString()}
-                </h2>
+  <div>
+    <h2>
+      {new Date(entry.completedAt).toLocaleString()}
+    </h2>
 
-                <p className="history-meta">
-                  {entry.documentCount} document
-                  {entry.documentCount !== 1 ? 's' : ''} ·{' '}
-                  {entry.pageCount} pages · {entry.totalFindings} findings
-                </p>
-              </div>
+    <p className="history-meta">
+      {entry.documentCount} document
+      {entry.documentCount !== 1 ? 's' : ''} ·{' '}
+      {entry.pageCount} pages · {entry.totalFindings} findings
+    </p>
+  </div>
 
-              <button
-                className="text-button"
-                onClick={() => {
-                  setViewedHistoryEntry(entry)
-                  setAnalysisResult(entry.result)
-                  setScreen('results')
-                }}
-              >
-                View Results <Icon name="arrow" />
-              </button>
-            </div>
+  <div className="history-card-actions">
+    <button
+      className="text-button"
+      onClick={() => {
+        setViewedHistoryEntry(entry)
+        setAnalysisResult(entry.result)
+        setScreen('results')
+      }}
+    >
+      View Results <Icon name="arrow" />
+    </button>
+
+    <button
+      className="history-delete-button"
+      onClick={() => deleteHistoryEntry(entry.id)}
+      aria-label="Delete this history entry"
+      title="Delete this history entry"
+    >
+      <Icon name="remove" />
+    </button>
+  </div>
+</div>
 
             <p className="history-documents">
               {entry.documents.join(', ')}

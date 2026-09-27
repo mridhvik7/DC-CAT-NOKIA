@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-
+import torch
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_NAME = "vennify/t5-base-grammar-correction"
@@ -51,6 +51,9 @@ class T5CorrectionModel:
         self._model_name = model_name or os.environ.get(
             "NOKIA_SPELLCHECK_T5_MODEL", _DEFAULT_MODEL_NAME
         )
+        self._device = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
+)
         self._tokenizer = None
         self._model = None
         self._load_attempted = False
@@ -59,21 +62,37 @@ class T5CorrectionModel:
         """Load the model once. Returns True if a real model is available."""
         if self._load_attempted:
             return self._model is not None
+
         self._load_attempted = True
+
         try:
             from transformers import T5ForConditionalGeneration, T5Tokenizer
 
             logger.info("Loading T5 model %s (once)...", self._model_name)
-            self._tokenizer = T5Tokenizer.from_pretrained(self._model_name)
-            self._model = T5ForConditionalGeneration.from_pretrained(self._model_name)
+
+            self._tokenizer = T5Tokenizer.from_pretrained(
+                self._model_name
+            )
+
+            self._model = T5ForConditionalGeneration.from_pretrained(
+                self._model_name
+            )
+
+            self._model.to(self._device)
+
+            
+
             self._model.eval()
+
             logger.info("T5 model loaded.")
             return True
+
         except Exception as exc:
             logger.warning(
                 "T5 model unavailable (%s); using deterministic fallback. "
                 "Run the benchmark script and set up transformers+torch to "
-                "enable real contextual correction.", exc
+                "enable real contextual correction.",
+                exc,
             )
             return False
 
@@ -86,14 +105,71 @@ class T5CorrectionModel:
         if self._ensure_model():
             try:
                 ids = self._tokenizer(
-                    "Fix spelling errors only. Do not change grammar, wording, plurality, punctuation, or meaning: " + sentence, return_tensors="pt"
-                ).input_ids
-                out = self._model.generate(ids, max_length=128)
+    "Fix spelling errors only. Do not change grammar, wording, plurality, punctuation, or meaning: "
+    + sentence,
+    return_tensors="pt",
+).input_ids.to(self._device)
+
+                with torch.inference_mode():
+                    out = self._model.generate(ids, max_length=128)
+
                 return self._tokenizer.decode(out[0], skip_special_tokens=True)
             except Exception as exc:
                 logger.warning("T5 inference failed on a sentence: %s", exc)
-        return _fallback_correct(sentence)
 
+        return _fallback_correct(sentence)
+    def correct_many(
+        self,
+        sentences: list[str],
+        batch_size: int = 8,
+    ) -> list[str]:
+        """Return corrected versions for multiple sentences using batched T5 inference."""
+        if not sentences:
+            return []
+
+        if not self._ensure_model():
+            return [_fallback_correct(sentence) for sentence in sentences]
+
+        corrected_sentences: list[str] = []
+
+        for start in range(0, len(sentences), batch_size):
+            batch = sentences[start:start + batch_size]
+
+            try:
+                inputs = self._tokenizer(
+                    [
+                        "Fix spelling errors only. Do not change grammar, wording, plurality, punctuation, or meaning: "
+                        + sentence
+                        for sentence in batch
+                    ],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                )
+                inputs = inputs.to(self._device)
+
+                outputs = self._model.generate(
+    inputs.input_ids,
+    attention_mask=inputs.attention_mask,
+    max_length=128,
+    num_beams=1,
+    
+)
+
+                corrected_sentences.extend(
+                    self._tokenizer.batch_decode(
+                        outputs,
+                        skip_special_tokens=True,
+                    )
+                )
+
+            except Exception as exc:
+                logger.warning("T5 batch inference failed: %s", exc)
+                corrected_sentences.extend(
+                    [_fallback_correct(sentence) for sentence in batch]
+                )
+
+        return corrected_sentences
 
 def _fallback_correct(sentence: str) -> str:
     tokens = _WORD_RE.findall(sentence)

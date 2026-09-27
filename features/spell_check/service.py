@@ -49,28 +49,42 @@ class SpellCheckService:
         try:
             findings: list[Finding] = []
 
+            sentence_items = []
+
             for para in document.paragraphs:
                 for sentence in split_sentences(para.text):
-                    corrected = self._model.correct(sentence)
+                    sentence_items.append(
+                        (sentence, para.page, para.index)
+                    )
 
-                    for change in word_level_changes(sentence, corrected):
-                        protected = is_protected_term(
-                            change.original,
-                            self._terminology,
-                        )
-                        if protected:
-                            continue
+            sentences = [item[0] for item in sentence_items]
+            corrected_sentences = self._model.correct_many(
+                sentences,
+                batch_size=52,
+            )
 
-                        findings.append(
-                            _to_finding(
-                                self.name,
-                                change,
-                                sentence,
-                                corrected,
-                                para.page,
-                                para.index,
-                            )
+            for (sentence, page, paragraph_index), corrected in zip(
+                sentence_items,
+                corrected_sentences,
+            ):
+                for change in word_level_changes(sentence, corrected):
+                    protected = is_protected_term(
+                        change.original,
+                        self._terminology,
+                    )
+                    if protected:
+                        continue
+
+                    findings.append(
+                        _to_finding(
+                            self.name,
+                            change,
+                            sentence,
+                            corrected,
+                            page,
+                            paragraph_index,
                         )
+                    )
 
             return FeatureResult(
                 feature=self.name,
@@ -85,6 +99,7 @@ class SpellCheckService:
                 status="failed",
                 error=str(exc),
             )
+            
 
     def report_columns(self) -> list[str]:
         return [
