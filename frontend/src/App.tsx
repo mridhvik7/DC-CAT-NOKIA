@@ -66,6 +66,7 @@ type Finding = {
   featureId: string
   finding: string
   suggestion: string
+  confidence?: number | null
   severity: Severity
   original?: string
   context?: string
@@ -610,6 +611,7 @@ const featureIdMap: Record<string, string> = {
               severity: string
               page: number | null
               message: string
+              confidence?: number | null
               details?: {
                 word?: string
                 suggestion?: string
@@ -619,6 +621,10 @@ const featureIdMap: Record<string, string> = {
                 corrected_sentence?: string
                 paragraph_index?: number
                 document_name?: string
+                suggested_heading?: string | null
+                suggested_page?: number | null
+                reference_text?: string | null
+                reference_type?: string | null
               }
             }>
           }>
@@ -626,32 +632,46 @@ const featureIdMap: Record<string, string> = {
           documentIndex: number,
         ) =>
           documentResult.results.flatMap((result) =>
-            result.findings.map((finding) => ({
-              id: nextFindingId++,
-documentId: String(documentIndex),
-documentName:
-                finding.details?.document_name ??
-                documentResult.filename ??
-                'Unknown document',
-              page: finding.page ?? 1,
-              featureId:
-                featureIdMap[result.feature] ?? result.feature,
-              finding: finding.message,
-              suggestion:
-                finding.details?.suggested_correction ??
-                finding.details?.suggestion ??
-                '—',
-              severity:
-                severityMap[finding.severity] ?? 'Medium',
-              original:
-                finding.details?.incorrect_word ??
-                finding.details?.word,
-              context: finding.details?.original_sentence,
-              correctedSentence:
-                finding.details?.corrected_sentence,
-              paragraphIndex:
-                finding.details?.paragraph_index,
-            })),
+            result.findings.map((finding) => {
+              const suggestedHeading = finding.details?.suggested_heading
+              const suggestedPage = finding.details?.suggested_page
+
+              return {
+                id: nextFindingId++,
+                documentId: String(documentIndex),
+                documentName:
+                  finding.details?.document_name ??
+                  documentResult.filename ??
+                  'Unknown document',
+                page: finding.page ?? 1,
+                featureId:
+                  featureIdMap[result.feature] ?? result.feature,
+                finding: finding.message,
+                suggestion:
+                  finding.details?.suggested_correction ??
+                  finding.details?.suggestion ??
+                  (suggestedHeading
+                    ? suggestedPage
+                      ? `${suggestedHeading} (p${suggestedPage})`
+                      : suggestedHeading
+                    : '—'),
+                confidence: finding.confidence,
+                severity:
+                  severityMap[finding.severity] ?? 'Medium',
+                original:
+                  finding.details?.incorrect_word ??
+                  finding.details?.word,
+                context:
+                  finding.details?.original_sentence ??
+                  (finding.details?.reference_type === 'Cross-reference'
+                    ? finding.details?.reference_text
+                    : undefined),
+                correctedSentence:
+                  finding.details?.corrected_sentence,
+                paragraphIndex:
+                  finding.details?.paragraph_index,
+              }
+            }),
           ),
       )
 
@@ -1423,6 +1443,7 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
                 <th>Feature</th>
                 <th>Finding</th>
                 <th>Suggestion</th>
+                <th>Confidence</th>
                 <th>Severity</th>
                 <th>Action</th>
               </tr>
@@ -1439,6 +1460,11 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
                   </td>
                   <td>{finding.finding}</td>
                   <td>{finding.suggestion}</td>
+                  <td>
+                    {finding.confidence == null
+                      ? ''
+                      : finding.confidence.toFixed(2)}
+                  </td>
                   <td>
                     <span
                       className={`severity ${finding.severity.toLowerCase()}`}
@@ -1515,17 +1541,32 @@ localStorage.setItem('dc-cat-history', JSON.stringify(updatedHistory))
               </div>
             )}
 
-            {activeFinding.original && (
-              <div>
-                <dt>Suggested correction</dt>
+            {activeFinding.suggestion &&
+              activeFinding.suggestion !== '—' && (
+                <div>
+                  <dt>
+                    {activeFinding.original
+                      ? 'Suggested correction'
+                      : 'Suggestion'}
+                  </dt>
 
-                <dd>
-                  <mark className="suggested-text">
-                    {activeFinding.suggestion}
-                  </mark>
-                </dd>
-              </div>
-            )}
+                  <dd>
+                    <mark className="suggested-text">
+                      {activeFinding.suggestion}
+                    </mark>
+                  </dd>
+                </div>
+              )}
+
+            <div>
+              <dt>Confidence</dt>
+
+              <dd>
+                {activeFinding.confidence == null
+                  ? ''
+                  : activeFinding.confidence.toFixed(2)}
+              </dd>
+            </div>
 
             <div>
               <dt>Severity</dt>
