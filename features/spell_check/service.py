@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Optional
+from wordfreq import zipf_frequency
 
 from common.contracts import Document, FeatureResult, Finding
 
@@ -29,6 +30,21 @@ from .model import get_model
 from .preprocessing import is_protected_term, load_terminology, split_sentences
 from .utils import word_level_changes
 logger = logging.getLogger(__name__)
+_COMMON_WORD_THRESHOLD = 4.0
+
+
+def _is_verified_spelling_change(original: str, suggestion: str) -> bool:
+    """Reject changes where both words are common English words."""
+    original_frequency = zipf_frequency(original.lower(), "en")
+    suggestion_frequency = zipf_frequency(suggestion.lower(), "en")
+
+    if (
+        original_frequency >= _COMMON_WORD_THRESHOLD
+        and suggestion_frequency >= _COMMON_WORD_THRESHOLD
+    ):
+        return False
+
+    return True
 class SpellCheckService:
     name = "spell_check"
 
@@ -68,6 +84,12 @@ class SpellCheckService:
                 corrected_sentences,
             ):
                 for change in word_level_changes(sentence, corrected):
+                    if not _is_verified_spelling_change(
+                        change.original,
+                        change.suggestion,
+                    ):
+                        continue
+
                     protected = is_protected_term(
                         change.original,
                         self._terminology,

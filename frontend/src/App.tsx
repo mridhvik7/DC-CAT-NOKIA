@@ -675,18 +675,20 @@ const featureIdMap: Record<string, string> = {
           ),
       )
 
-      const newResult: AnalysisResult = {
+const totalPageCount = selectedFilePageCounts.reduce<number>(
+  (total, pageCount) => total + (pageCount ?? 0),
+  0,
+)
+
+const newResult: AnalysisResult = {
   document: {
     ...document,
-    pageCount: data.page_count ?? document.pageCount,
-    pageCountSource: data.page_count
-      ? 'backend'
-      : document.pageCountSource,
+    pageCount: totalPageCount,
+    pageCountSource: 'client',
   },
   findings: realFindings,
   completedAt: 'Backend connected',
 }
-
 setAnalysisResult(newResult)
 const historyEntry: HistoryEntry = {
   id: Date.now().toString(),
